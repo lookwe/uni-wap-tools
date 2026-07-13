@@ -1,0 +1,594 @@
+import WindowManager from 'android.view.WindowManager'
+import TextView from 'android.widget.TextView'
+import Gravity from 'android.view.Gravity'
+import Color from 'android.graphics.Color'
+import GradientDrawable from 'android.graphics.drawable.GradientDrawable'
+import MotionEvent from 'android.view.MotionEvent'
+import View from 'android.view.View'
+import DisplayMetrics from 'android.util.DisplayMetrics'
+import TypedValue from 'android.util.TypedValue'
+import Settings from 'android.provider.Settings'
+import Intent from 'android.content.Intent'
+import ValueAnimator from 'android.animation.ValueAnimator'
+import PathInterpolator from 'android.view.animation.PathInterpolator'
+
+export type ClockMode = "overlay" | "accessibility"
+
+let windowManager : WindowManager | null = null
+let clockView : TextView | null = null
+let clockParams : WindowManager.LayoutParams | null = null
+let timerId : Number = -1
+let running = false
+
+let startTouchX : Float = 0.0.toFloat()
+let startTouchY : Float = 0.0.toFloat()
+let startWindowX : Int = 0
+let startWindowY : Int = 0
+let hasMoved = false
+
+let screenWidth : Int = 0
+let screenHeight : Int = 0
+
+let menuBtnClose : TextView | null = null
+let menuBtnMinus : TextView | null = null
+let menuBtnPlus : TextView | null = null
+let menuBtnParams1 : WindowManager.LayoutParams | null = null
+let menuBtnParams2 : WindowManager.LayoutParams | null = null
+let menuBtnParams3 : WindowManager.LayoutParams | null = null
+
+let menuOpen = false
+let menuAnimating = false
+let expandRight = true
+let menuAutoCloseTimer : Number = -1
+let expandDoneTimer : Number = -1
+let collapseDoneTimer : Number = -1
+let currentFontSizeSp : Double = 12.0
+
+let btnTouchX : Float = 0.0.toFloat()
+let btnTouchY : Float = 0.0.toFloat()
+
+function getAppContext() : android.content.Context {
+	return UTSAndroid.getAppContext()!
+}
+
+function formatTime() : string {
+	const now = new Date()
+	const h = now.getHours()
+	const m = now.getMinutes()
+	const hStr = h < 10 ? "0" + h.toString() : h.toString()
+	const mStr = m < 10 ? "0" + m.toString() : m.toString()
+	return hStr + ":" + mStr
+}
+
+function dp2px(dp : Double) : Int {
+	const metrics = getAppContext().getResources().getDisplayMetrics()
+	return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), metrics).toInt()
+}
+
+function tick() : void {
+	if (!running) {
+		return
+	}
+	if (clockView != null) {
+		clockView!.setText(formatTime())
+	}
+}
+
+function createClockView() : TextView {
+	const context = getAppContext()
+	const tv = new TextView(context)
+	tv.setText(formatTime())
+	tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, currentFontSizeSp.toFloat())
+	tv.setTextColor(Color.WHITE)
+	tv.setIncludeFontPadding(false)
+	tv.getPaint().setFakeBoldText(true)
+
+	const bg = new GradientDrawable()
+	bg.setColor(Color.parseColor("#CC000000"))
+	bg.setCornerRadius(dp2px(16.0).toFloat())
+	tv.setBackground(bg)
+
+	const hPad = dp2px(14.0)
+	const vPad = dp2px(8.0)
+	tv.setPadding(hPad, vPad, hPad, vPad)
+	return tv
+}
+
+function createMenuButton(text : string) : TextView {
+	const context = getAppContext()
+	const tv = new TextView(context)
+	tv.setText(text)
+	tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.0.toFloat())
+	tv.setTextColor(Color.WHITE)
+	tv.setIncludeFontPadding(false)
+	tv.setGravity(Gravity.CENTER)
+
+	const btnSize = dp2px(36.0)
+	const bg = new GradientDrawable()
+	bg.setColor(Color.parseColor("#CC000000"))
+	bg.setShape(GradientDrawable.OVAL)
+	tv.setBackground(bg)
+	tv.setWidth(btnSize)
+	tv.setHeight(btnSize)
+
+	tv.setOnTouchListener(View.OnTouchListener(function (v: View, event: MotionEvent) : Boolean {
+		if (event.getAction() == MotionEvent.ACTION_DOWN) {
+			btnTouchX = event.getRawX()
+			btnTouchY = event.getRawY()
+			return true
+		}
+		if (event.getAction() == MotionEvent.ACTION_UP) {
+			const dx = event.getRawX() - btnTouchX
+			const dy = event.getRawY() - btnTouchY
+			const tapThreshold = dp2px(16.0)
+			if ((dx > -tapThreshold && dx < tapThreshold) && (dy > -tapThreshold && dy < tapThreshold)) {
+				onMenuClick(v)
+			}
+			return true
+		}
+		return true
+	}))
+
+	return tv
+}
+
+function ensureMenuButtons() : void {
+	const btnSize = dp2px(36.0)
+	if (menuBtnClose == null) {
+		menuBtnClose = createMenuButton("\u2715")
+		menuBtnParams1 = createMenuLayoutParams(btnSize)
+	}
+	if (menuBtnMinus == null) {
+		menuBtnMinus = createMenuButton("A\u207B")
+		menuBtnParams2 = createMenuLayoutParams(btnSize)
+	}
+	if (menuBtnPlus == null) {
+		menuBtnPlus = createMenuButton("A\u207A")
+		menuBtnParams3 = createMenuLayoutParams(btnSize)
+	}
+}
+
+function createMenuLayoutParams(size : Int) : WindowManager.LayoutParams {
+	const param = new WindowManager.LayoutParams(
+		size,
+		size,
+		WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+		WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+		android.graphics.PixelFormat.TRANSLUCENT
+	)
+	param.gravity = Gravity.TOP | Gravity.START
+	return param
+}
+
+function onMenuClick(v : View) : void {
+	if (v == menuBtnClose) {
+		cancelAutoCloseTimer()
+		collapseMenu()
+		stopFloatingClockInternal()
+	} else if (v == menuBtnMinus) {
+		const newSize = currentFontSizeSp - 2.0
+		if (newSize >= 8.0) {
+			currentFontSizeSp = newSize
+			applyFontSize()
+		}
+		restartAutoCloseTimer()
+	} else if (v == menuBtnPlus) {
+		const newSize = currentFontSizeSp + 2.0
+		if (newSize <= 24.0) {
+			currentFontSizeSp = newSize
+			applyFontSize()
+		}
+		restartAutoCloseTimer()
+	}
+}
+
+function applyFontSize() : void {
+	if (clockView != null) {
+		clockView!.setTextSize(TypedValue.COMPLEX_UNIT_SP, currentFontSizeSp.toFloat())
+		clockView!.requestLayout()
+		// 等待布局后更新窗口尺寸
+		setTimeout(function () : void {
+			if (windowManager != null && clockView != null && clockParams != null) {
+				windowManager!.updateViewLayout(clockView, clockParams)
+			}
+		}, 100)
+	}
+}
+
+function toggleMenu() : void {
+	if (menuAnimating) {
+		return
+	}
+	if (menuOpen) {
+		collapseMenu()
+	} else {
+		expandMenu()
+	}
+}
+
+function expandMenu() : void {
+	if (menuOpen || menuAnimating) {
+		return
+	}
+	menuAnimating = true
+
+	ensureMenuButtons()
+
+	const cw = clockView!.getWidth()
+	const ch = clockView!.getHeight()
+	const cx = clockParams!.x + cw / 2
+	const cy = clockParams!.y + ch / 2
+
+	expandRight = cx < screenWidth / 2
+
+	const btnHalf = dp2px(36.0) / 2
+	const centerStartX = cx - btnHalf
+	const centerStartY = cy - btnHalf
+
+	// 计算弧形终点坐标
+	const r = dp2px(60.0).toDouble()
+	const cxd = cx.toDouble()
+	const cyd = cy.toDouble()
+	const bhd = btnHalf.toDouble()
+
+	var angleX1 : Double
+	var angleY1 : Double
+	var angleX2 : Double
+	var angleY2 : Double
+	var angleX3 : Double
+	var angleY3 : Double
+
+	if (expandRight) {
+		angleX1 = cxd + r * Math.cos(45.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY1 = cyd + r * Math.sin(45.0 * Math.PI / 180.0).toDouble() - bhd
+		angleX2 = cxd + r - bhd
+		angleY2 = cyd - bhd
+		angleX3 = cxd + r * Math.cos(-45.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY3 = cyd + r * Math.sin(-45.0 * Math.PI / 180.0).toDouble() - bhd
+	} else {
+		angleX1 = cxd + r * Math.cos(135.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY1 = cyd + r * Math.sin(135.0 * Math.PI / 180.0).toDouble() - bhd
+		angleX2 = cxd - r - bhd
+		angleY2 = cyd - bhd
+		angleX3 = cxd + r * Math.cos(225.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY3 = cyd + r * Math.sin(225.0 * Math.PI / 180.0).toDouble() - bhd
+	}
+
+	const finalX1 = angleX1.toFloat()
+	const finalY1 = angleY1.toFloat()
+	const finalX2 = angleX2.toFloat()
+	const finalY2 = angleY2.toFloat()
+	const finalX3 = angleX3.toFloat()
+	const finalY3 = angleY3.toFloat()
+
+	// 初始状态：三个按钮都在时钟中心
+	menuBtnParams1!.x = centerStartX
+	menuBtnParams1!.y = centerStartY
+	menuBtnParams2!.x = centerStartX
+	menuBtnParams2!.y = centerStartY
+	menuBtnParams3!.x = centerStartX
+	menuBtnParams3!.y = centerStartY
+
+	menuBtnClose!.setAlpha(0.0.toFloat())
+	menuBtnMinus!.setAlpha(0.0.toFloat())
+	menuBtnPlus!.setAlpha(0.0.toFloat())
+
+	windowManager!.addView(menuBtnClose, menuBtnParams1)
+	windowManager!.addView(menuBtnMinus, menuBtnParams2)
+	windowManager!.addView(menuBtnPlus, menuBtnParams3)
+
+	const animator = ValueAnimator.ofFloat(0.0.toFloat(), 1.0.toFloat())
+	animator.setDuration(320)
+	animator.setInterpolator(new PathInterpolator(0.22.toFloat(), 1.0.toFloat(), 0.36.toFloat(), 1.0.toFloat()))
+
+	animator.addUpdateListener(ValueAnimator.AnimatorUpdateListener(function (animation: ValueAnimator) : void {
+		const fraction = (animation.getAnimatedValue() as Float)
+
+		const x1 = (centerStartX.toFloat() * (1.0.toFloat() - fraction) + finalX1 * fraction).toInt()
+		const y1 = (centerStartY.toFloat() * (1.0.toFloat() - fraction) + finalY1 * fraction).toInt()
+		const x2 = (centerStartX.toFloat() * (1.0.toFloat() - fraction) + finalX2 * fraction).toInt()
+		const y2 = (centerStartY.toFloat() * (1.0.toFloat() - fraction) + finalY2 * fraction).toInt()
+		const x3 = (centerStartX.toFloat() * (1.0.toFloat() - fraction) + finalX3 * fraction).toInt()
+		const y3 = (centerStartY.toFloat() * (1.0.toFloat() - fraction) + finalY3 * fraction).toInt()
+
+		menuBtnParams1!.x = x1
+		menuBtnParams1!.y = y1
+		menuBtnParams2!.x = x2
+		menuBtnParams2!.y = y2
+		menuBtnParams3!.x = x3
+		menuBtnParams3!.y = y3
+
+		windowManager!.updateViewLayout(menuBtnClose, menuBtnParams1)
+		windowManager!.updateViewLayout(menuBtnMinus, menuBtnParams2)
+		windowManager!.updateViewLayout(menuBtnPlus, menuBtnParams3)
+
+		menuBtnClose!.setAlpha(fraction)
+		menuBtnMinus!.setAlpha(fraction)
+		menuBtnPlus!.setAlpha(fraction)
+	}))
+
+	animator.start()
+
+	// 动画结束后回调（使用定时器模拟）
+	expandDoneTimer = setInterval(function () : void {
+		clearInterval(expandDoneTimer)
+		if (!menuAnimating) {
+			return
+		}
+		menuAnimating = false
+		menuOpen = true
+		startAutoCloseTimer()
+	}, 320)
+}
+
+function collapseMenu() : void {
+	if (!menuOpen || menuAnimating) {
+		return
+	}
+	menuAnimating = true
+	cancelAutoCloseTimer()
+
+	const cw = clockView!.getWidth()
+	const ch = clockView!.getHeight()
+	const cx = clockParams!.x + cw / 2
+	const cy = clockParams!.y + ch / 2
+
+	expandRight = cx < screenWidth / 2
+
+	const btnHalf = dp2px(36.0) / 2
+	const centerX = cx - btnHalf
+	const centerY = cy - btnHalf
+
+	// 计算弧形的起始坐标（当前展开位置）
+	const r = dp2px(60.0).toDouble()
+	const cxd = cx.toDouble()
+	const cyd = cy.toDouble()
+	const bhd = btnHalf.toDouble()
+
+	var angleX1 : Double
+	var angleY1 : Double
+	var angleX2 : Double
+	var angleY2 : Double
+	var angleX3 : Double
+	var angleY3 : Double
+
+	if (expandRight) {
+		angleX1 = cxd + r * Math.cos(45.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY1 = cyd + r * Math.sin(45.0 * Math.PI / 180.0).toDouble() - bhd
+		angleX2 = cxd + r - bhd
+		angleY2 = cyd - bhd
+		angleX3 = cxd + r * Math.cos(-45.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY3 = cyd + r * Math.sin(-45.0 * Math.PI / 180.0).toDouble() - bhd
+	} else {
+		angleX1 = cxd + r * Math.cos(135.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY1 = cyd + r * Math.sin(135.0 * Math.PI / 180.0).toDouble() - bhd
+		angleX2 = cxd - r - bhd
+		angleY2 = cyd - bhd
+		angleX3 = cxd + r * Math.cos(225.0 * Math.PI / 180.0).toDouble() - bhd
+		angleY3 = cyd + r * Math.sin(225.0 * Math.PI / 180.0).toDouble() - bhd
+	}
+
+	const startX1 = angleX1.toFloat()
+	const startY1 = angleY1.toFloat()
+	const startX2 = angleX2.toFloat()
+	const startY2 = angleY2.toFloat()
+	const startX3 = angleX3.toFloat()
+	const startY3 = angleY3.toFloat()
+
+	const animator = ValueAnimator.ofFloat(1.0.toFloat(), 0.0.toFloat())
+	animator.setDuration(320)
+	animator.setInterpolator(new PathInterpolator(0.22.toFloat(), 1.0.toFloat(), 0.36.toFloat(), 1.0.toFloat()))
+
+	animator.addUpdateListener(ValueAnimator.AnimatorUpdateListener(function (animation: ValueAnimator) : void {
+		const fraction = (animation.getAnimatedValue() as Float)
+
+		const x1 = (centerX.toFloat() * (1.0.toFloat() - fraction) + startX1 * fraction).toInt()
+		const y1 = (centerY.toFloat() * (1.0.toFloat() - fraction) + startY1 * fraction).toInt()
+		const x2 = (centerX.toFloat() * (1.0.toFloat() - fraction) + startX2 * fraction).toInt()
+		const y2 = (centerY.toFloat() * (1.0.toFloat() - fraction) + startY2 * fraction).toInt()
+		const x3 = (centerX.toFloat() * (1.0.toFloat() - fraction) + startX3 * fraction).toInt()
+		const y3 = (centerY.toFloat() * (1.0.toFloat() - fraction) + startY3 * fraction).toInt()
+
+		menuBtnParams1!.x = x1
+		menuBtnParams1!.y = y1
+		menuBtnParams2!.x = x2
+		menuBtnParams2!.y = y2
+		menuBtnParams3!.x = x3
+		menuBtnParams3!.y = y3
+
+		windowManager!.updateViewLayout(menuBtnClose, menuBtnParams1)
+		windowManager!.updateViewLayout(menuBtnMinus, menuBtnParams2)
+		windowManager!.updateViewLayout(menuBtnPlus, menuBtnParams3)
+
+		menuBtnClose!.setAlpha(fraction)
+		menuBtnMinus!.setAlpha(fraction)
+		menuBtnPlus!.setAlpha(fraction)
+	}))
+
+	animator.start()
+
+	// 动画结束后移除视图
+	collapseDoneTimer = setInterval(function () : void {
+		clearInterval(collapseDoneTimer)
+		if (!menuAnimating) {
+			return
+		}
+		menuAnimating = false
+		menuOpen = false
+		removeMenuViews()
+	}, 320)
+}
+
+function removeMenuViews() : void {
+	if (windowManager != null) {
+		if (menuBtnClose != null) {
+			try {
+				windowManager!.removeView(menuBtnClose)
+			} catch (e) { }
+		}
+		if (menuBtnMinus != null) {
+			try {
+				windowManager!.removeView(menuBtnMinus)
+			} catch (e) { }
+		}
+		if (menuBtnPlus != null) {
+			try {
+				windowManager!.removeView(menuBtnPlus)
+			} catch (e) { }
+		}
+	}
+}
+
+function startAutoCloseTimer() : void {
+	cancelAutoCloseTimer()
+	menuAutoCloseTimer = setInterval(function () : void {
+		clearInterval(menuAutoCloseTimer)
+		menuAutoCloseTimer = -1
+		if (menuOpen && !menuAnimating) {
+			collapseMenu()
+		}
+	}, 5000)
+}
+
+function restartAutoCloseTimer() : void {
+	startAutoCloseTimer()
+}
+
+function cancelAutoCloseTimer() : void {
+	if (menuAutoCloseTimer != -1) {
+		clearInterval(menuAutoCloseTimer)
+		menuAutoCloseTimer = -1
+	}
+}
+
+function stopFloatingClockInternal() : void {
+	running = false
+	if (timerId != -1) {
+		clearInterval(timerId)
+		timerId = -1
+	}
+	cancelAutoCloseTimer()
+	removeMenuViews()
+	if (windowManager != null && clockView != null) {
+		try {
+			windowManager!.removeView(clockView)
+		} catch (e) { }
+	}
+	clockView = null
+	clockParams = null
+	windowManager = null
+	menuOpen = false
+	menuAnimating = false
+}
+
+export function checkOverlayPermission() : boolean {
+	return Settings.canDrawOverlays(getAppContext())
+}
+
+export function requestOverlayPermission() : void {
+	const intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+	intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+	getAppContext().startActivity(intent)
+}
+
+export function openAccessibilitySettings() : void {
+	const intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+	intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+	getAppContext().startActivity(intent)
+}
+
+export function startFloatingClock(mode : ClockMode) : boolean {
+	if (running) {
+		return true
+	}
+	if (mode == "overlay" && !checkOverlayPermission()) {
+		return false
+	}
+
+	const context = getAppContext()
+	windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
+	clockView = createClockView()
+
+	const flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+	const params = new WindowManager.LayoutParams(
+		WindowManager.LayoutParams.WRAP_CONTENT,
+		WindowManager.LayoutParams.WRAP_CONTENT,
+		WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+		flags,
+		android.graphics.PixelFormat.TRANSLUCENT
+	)
+	params.gravity = Gravity.TOP | Gravity.START
+	params.x = dp2px(16.0)
+	params.y = dp2px(80.0)
+	clockParams = params
+
+	const dm = new DisplayMetrics()
+	windowManager!.getDefaultDisplay().getMetrics(dm)
+	screenWidth = dm.widthPixels
+	screenHeight = dm.heightPixels
+
+	clockView!.setOnTouchListener(View.OnTouchListener(function (v: View, event: MotionEvent) : Boolean {
+		if (event.getAction() == MotionEvent.ACTION_DOWN) {
+			startTouchX = event.getRawX()
+			startTouchY = event.getRawY()
+			startWindowX = clockParams!.x
+			startWindowY = clockParams!.y
+			hasMoved = false
+			return true
+		}
+		if (event.getAction() == MotionEvent.ACTION_MOVE) {
+			const dx = (event.getRawX() - startTouchX).toInt()
+			const dy = (event.getRawY() - startTouchY).toInt()
+			const threshold = dp2px(8.0)
+			if (dx < -threshold || dx > threshold || dy < -threshold || dy > threshold) {
+				hasMoved = true
+				if (menuOpen && !menuAnimating) {
+					collapseMenu()
+				}
+			}
+			if (hasMoved) {
+				var newX = startWindowX + dx
+				var newY = startWindowY + dy
+				const maxX = screenWidth - v.getWidth()
+				const maxY = screenHeight - v.getHeight()
+				if (newX < 0) newX = 0
+				if (newX > maxX) newX = maxX
+				if (newY < 0) newY = 0
+				if (newY > maxY) newY = maxY
+				clockParams!.x = newX
+				clockParams!.y = newY
+				windowManager!.updateViewLayout(v, clockParams)
+			}
+			return true
+		}
+		if (event.getAction() == MotionEvent.ACTION_UP) {
+			if (!hasMoved) {
+				toggleMenu()
+			}
+			return true
+		}
+		return true
+	}))
+
+	windowManager!.addView(clockView, clockParams)
+
+	running = true
+	timerId = setInterval(function () : void {
+		tick()
+	}, 1000)
+	return true
+}
+
+export function stopFloatingClock() : void {
+	if (menuOpen) {
+		collapseMenu()
+	}
+	// 等待收起动画完成后再停止
+	setTimeout(function () : void {
+		stopFloatingClockInternal()
+	}, 350)
+}
+
+export function isClockRunning() : boolean {
+	return running
+}

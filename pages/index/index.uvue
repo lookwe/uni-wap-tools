@@ -1,0 +1,127 @@
+<template>
+	<view class="page">
+		<view class="header">
+			<text class="greeting">工具箱</text>
+			<text class="subtitle">选择你需要的工具</text>
+		</view>
+
+		<view class="grid">
+			<view class="tool-card" @click="goToClock">
+				<view class="card-icon-wrap">
+					<view class="clock-face">
+						<view class="clock-hand-h"></view>
+						<view class="clock-hand-m"></view>
+						<view class="clock-dot"></view>
+					</view>
+				</view>
+				<text class="card-title">悬浮时钟</text>
+				<text class="card-desc">全屏时显示悬浮时间</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	const goToClock = function () {
+		uni.navigateTo({ url: '/pages/floating-clock/index' })
+	}
+</script>
+
+<style lang="scss">
+	.page {
+		flex: 1;
+		background-color: #F2F2F7;
+		padding: 0px 16px;
+		padding-top: 20px;
+	}
+
+	.header {
+		padding: 24px 4px 20px;
+	}
+
+	.greeting {
+		font-size: 34px;
+		font-weight: 700;
+		color: #000000;
+	}
+
+	.subtitle {
+		font-size: 15px;
+		color: #8E8E93;
+		margin-top: 4px;
+	}
+
+	.grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.tool-card {
+		background-color: #FFFFFF;
+		border-radius: 16px;
+		padding: 20px 16px;
+		width: 48%;
+		margin-right: 4%;
+		margin-bottom: 12px;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+	}
+
+	.card-icon-wrap {
+		width: 52px;
+		height: 52px;
+		border-radius: 14px;
+		background-color: #007AFF;
+		justify-content: center;
+		align-items: center;
+		margin-bottom: 14px;
+	}
+
+	.clock-face {
+		width: 28px;
+		height: 28px;
+		border-width: 2px;
+		border-color: #FFFFFF;
+		border-radius: 14px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.clock-hand-h {
+		position: absolute;
+		width: 2px;
+		height: 8px;
+		background-color: #FFFFFF;
+		bottom: 12px;
+		left: 11px;
+	}
+
+	.clock-hand-m {
+		position: absolute;
+		width: 2px;
+		height: 10px;
+		background-color: #FFFFFF;
+		bottom: 12px;
+		left: 11px;
+		transform: rotate(90deg);
+		transform-origin: 1px 10px;
+	}
+
+	.clock-dot {
+		width: 3px;
+		height: 3px;
+		border-radius: 2px;
+		background-color: #FFFFFF;
+	}
+
+	.card-title {
+		font-size: 17px;
+		font-weight: 600;
+		color: #1C1C1E;
+	}
+
+	.card-desc {
+		font-size: 13px;
+		color: #8E8E93;
+		margin-top: 4px;
+	}
+</style>

@@ -1,0 +1,183 @@
+<template>
+	<view class="page">
+		<view class="section">
+			<text class="section-title">悬浮窗模式</text>
+			<view class="card">
+				<view class="row">
+					<text class="label">悬浮窗权限</text>
+					<text :class="['status', hasOverlayPerm ? 'status-ok' : 'status-warn']">
+						{{hasOverlayPerm ? '已授权' : '未授权'}}
+					</text>
+				</view>
+				<button v-if="!hasOverlayPerm" class="btn btn-blue" @click="reqOverlay">
+					去授权
+				</button>
+				<button class="btn" :class="clockRunning ? 'btn-red' : 'btn-green'" @click="toggleOverlay">
+					{{clockRunning ? '停止悬浮时钟' : '启动悬浮时钟'}}
+				</button>
+			</view>
+		</view>
+
+		<view class="section">
+			<text class="section-title">无障碍服务模式</text>
+			<view class="card">
+				<text class="hint">
+					开启无障碍服务后，无需悬浮窗权限即可显示悬浮时钟，且服务更稳定不易被系统关闭。
+				</text>
+				<button class="btn btn-gray" @click="openA11y">
+					前往无障碍设置
+				</button>
+			</view>
+		</view>
+
+		<view class="section">
+			<text class="section-title">说明</text>
+			<view class="card">
+				<text class="hint">
+					· 悬浮窗模式：需授权悬浮窗权限，适用于所有场景
+				</text>
+				<text class="hint">
+					· 无障碍模式：需在系统设置中开启，服务更稳定
+				</text>
+				<text class="hint">
+					· 两种模式可同时使用
+				</text>
+				<text class="hint">
+					· 时钟默认显示在屏幕左上方
+				</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import {
+		checkOverlayPermission,
+		requestOverlayPermission,
+		openAccessibilitySettings,
+		startFloatingClock,
+		stopFloatingClock,
+		isClockRunning
+	} from '../../utssdk/floating-clock/index'
+
+	const hasOverlayPerm = ref(false)
+	const clockRunning = ref(false)
+
+	const reqOverlay = function () {
+		requestOverlayPermission()
+	}
+
+	const openA11y = function () {
+		openAccessibilitySettings()
+	}
+
+	const toggleOverlay = function () {
+		if (clockRunning.value) {
+			stopFloatingClock()
+			clockRunning.value = false
+		} else {
+			const ok = startFloatingClock("overlay")
+			if (!ok) {
+				uni.showToast({ title: '请先授权悬浮窗权限', icon: 'none' })
+				return
+			}
+			clockRunning.value = true
+		}
+	}
+
+	onLoad((_options : OnLoadOptions) => {
+		hasOverlayPerm.value = checkOverlayPermission()
+		clockRunning.value = isClockRunning()
+	})
+
+	onShow(() => {
+		hasOverlayPerm.value = checkOverlayPermission()
+		clockRunning.value = isClockRunning()
+	})
+</script>
+
+<style lang="scss">
+	.page {
+		flex: 1;
+		background-color: #F2F2F7;
+		padding: 16px;
+	}
+
+	.section {
+		margin-bottom: 24px;
+	}
+
+	.section-title {
+		font-size: 13px;
+		color: #8E8E93;
+		margin-bottom: 8px;
+		margin-left: 16px;
+	}
+
+	.card {
+		background-color: #FFFFFF;
+		border-radius: 12px;
+		padding: 16px;
+	}
+
+	.row {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.label {
+		font-size: 17px;
+		color: #1C1C1E;
+	}
+
+	.status {
+		font-size: 15px;
+	}
+
+	.status-ok {
+		color: #34C759;
+	}
+
+	.status-warn {
+		color: #FF3B30;
+	}
+
+	.btn {
+		margin-top: 12px;
+		border-radius: 10px;
+		height: 44px;
+		justify-content: center;
+		align-items: center;
+		font-size: 17px;
+		font-weight: 500;
+	}
+
+	.btn-blue {
+		background-color: #007AFF;
+		color: #FFFFFF;
+	}
+
+	.btn-green {
+		background-color: #34C759;
+		color: #FFFFFF;
+	}
+
+	.btn-red {
+		background-color: #FF3B30;
+		color: #FFFFFF;
+	}
+
+	.btn-gray {
+		background-color: #E5E5EA;
+		color: #1C1C1E;
+	}
+
+	.hint {
+		font-size: 14px;
+		color: #8E8E93;
+		line-height: 22px;
+		margin-bottom: 4px;
+	}
+</style>
