@@ -39,10 +39,18 @@ let menuBtnParams3 : WindowManager.LayoutParams | null = null
 let menuOpen = false
 let menuAnimating = false
 let expandRight = true
+let expandDown = true
 let menuAutoCloseTimer : Number = -1
 let expandDoneTimer : Number = -1
 let collapseDoneTimer : Number = -1
 let currentFontSizeSp : Double = 12.0
+
+let menuFinalX1 : Double = 0
+let menuFinalY1 : Double = 0
+let menuFinalX2 : Double = 0
+let menuFinalY2 : Double = 0
+let menuFinalX3 : Double = 0
+let menuFinalY3 : Double = 0
 
 let btnTouchX : Float = 0.0.toFloat()
 let btnTouchY : Float = 0.0.toFloat()
@@ -55,14 +63,48 @@ function formatTime() : string {
 	const now = new Date()
 	const h = now.getHours()
 	const m = now.getMinutes()
+	const s = now.getSeconds()
 	const hStr = h < 10 ? "0" + h.toString() : h.toString()
 	const mStr = m < 10 ? "0" + m.toString() : m.toString()
-	return hStr + ":" + mStr
+	const sStr = s < 10 ? "0" + s.toString() : s.toString()
+	return hStr + ":" + mStr + ":" + sStr
 }
 
 function dp2px(dp : Double) : Int {
 	const metrics = getAppContext().getResources().getDisplayMetrics()
 	return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), metrics).toInt()
+}
+
+function calcMenuAngles(cxd : Double, cyd : Double, r : Double, bhd : Double) : void {
+	if (expandRight && expandDown) {
+		menuFinalX1 = cxd + r * Math.cos(60.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY1 = cyd + r * Math.sin(60.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX2 = cxd + r * Math.cos(30.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY2 = cyd + r * Math.sin(30.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX3 = cxd + r - bhd
+		menuFinalY3 = cyd - bhd
+	} else if (expandRight) {
+		menuFinalX1 = cxd + r * Math.cos(-60.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY1 = cyd + r * Math.sin(-60.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX2 = cxd + r * Math.cos(-30.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY2 = cyd + r * Math.sin(-30.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX3 = cxd + r - bhd
+		menuFinalY3 = cyd - bhd
+	} else if (expandDown) {
+		menuFinalX1 = cxd + r * Math.cos(120.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY1 = cyd + r * Math.sin(120.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX2 = cxd + r * Math.cos(150.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY2 = cyd + r * Math.sin(150.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX3 = cxd - r - bhd
+		menuFinalY3 = cyd - bhd
+	} else {
+		menuFinalX1 = cxd + r * Math.cos(240.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY1 = cyd + r * Math.sin(240.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX2 = cxd + r * Math.cos(210.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalY2 = cyd + r * Math.sin(210.0 * Math.PI / 180.0).toDouble() - bhd
+		menuFinalX3 = cxd - r - bhd
+		menuFinalY3 = cyd - bhd
+	}
 }
 
 function tick() : void {
@@ -226,6 +268,7 @@ function expandMenu() : void {
 	screenHeight = dm.heightPixels
 
 	expandRight = cx < screenWidth / 2
+	expandDown = cy < screenHeight / 2
 
 	const btnHalf = dp2px(36.0) / 2
 	const centerStartX = cx - btnHalf
@@ -237,35 +280,14 @@ function expandMenu() : void {
 	const cyd = cy.toDouble()
 	const bhd = btnHalf.toDouble()
 
-	var angleX1 : Double
-	var angleY1 : Double
-	var angleX2 : Double
-	var angleY2 : Double
-	var angleX3 : Double
-	var angleY3 : Double
+	calcMenuAngles(cxd, cyd, r, bhd)
 
-	if (expandRight) {
-		angleX1 = cxd + r * Math.cos(45.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY1 = cyd + r * Math.sin(45.0 * Math.PI / 180.0).toDouble() - bhd
-		angleX2 = cxd + r - bhd
-		angleY2 = cyd - bhd
-		angleX3 = cxd + r * Math.cos(-45.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY3 = cyd + r * Math.sin(-45.0 * Math.PI / 180.0).toDouble() - bhd
-	} else {
-		angleX1 = cxd + r * Math.cos(135.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY1 = cyd + r * Math.sin(135.0 * Math.PI / 180.0).toDouble() - bhd
-		angleX2 = cxd - r - bhd
-		angleY2 = cyd - bhd
-		angleX3 = cxd + r * Math.cos(225.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY3 = cyd + r * Math.sin(225.0 * Math.PI / 180.0).toDouble() - bhd
-	}
-
-	const finalX1 = angleX1.toFloat()
-	const finalY1 = angleY1.toFloat()
-	const finalX2 = angleX2.toFloat()
-	const finalY2 = angleY2.toFloat()
-	const finalX3 = angleX3.toFloat()
-	const finalY3 = angleY3.toFloat()
+	const finalX1 = menuFinalX1.toFloat()
+	const finalY1 = menuFinalY1.toFloat()
+	const finalX2 = menuFinalX2.toFloat()
+	const finalY2 = menuFinalY2.toFloat()
+	const finalX3 = menuFinalX3.toFloat()
+	const finalY3 = menuFinalY3.toFloat()
 
 	// 初始状态：三个按钮都在时钟中心
 	menuBtnParams1!.x = centerStartX
@@ -346,6 +368,7 @@ function collapseMenu() : void {
 	screenHeight = dm2.heightPixels
 
 	expandRight = cx < screenWidth / 2
+	expandDown = cy < screenHeight / 2
 
 	const btnHalf = dp2px(36.0) / 2
 	const centerX = cx - btnHalf
@@ -357,35 +380,14 @@ function collapseMenu() : void {
 	const cyd = cy.toDouble()
 	const bhd = btnHalf.toDouble()
 
-	var angleX1 : Double
-	var angleY1 : Double
-	var angleX2 : Double
-	var angleY2 : Double
-	var angleX3 : Double
-	var angleY3 : Double
+	calcMenuAngles(cxd, cyd, r, bhd)
 
-	if (expandRight) {
-		angleX1 = cxd + r * Math.cos(45.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY1 = cyd + r * Math.sin(45.0 * Math.PI / 180.0).toDouble() - bhd
-		angleX2 = cxd + r - bhd
-		angleY2 = cyd - bhd
-		angleX3 = cxd + r * Math.cos(-45.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY3 = cyd + r * Math.sin(-45.0 * Math.PI / 180.0).toDouble() - bhd
-	} else {
-		angleX1 = cxd + r * Math.cos(135.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY1 = cyd + r * Math.sin(135.0 * Math.PI / 180.0).toDouble() - bhd
-		angleX2 = cxd - r - bhd
-		angleY2 = cyd - bhd
-		angleX3 = cxd + r * Math.cos(225.0 * Math.PI / 180.0).toDouble() - bhd
-		angleY3 = cyd + r * Math.sin(225.0 * Math.PI / 180.0).toDouble() - bhd
-	}
-
-	const startX1 = angleX1.toFloat()
-	const startY1 = angleY1.toFloat()
-	const startX2 = angleX2.toFloat()
-	const startY2 = angleY2.toFloat()
-	const startX3 = angleX3.toFloat()
-	const startY3 = angleY3.toFloat()
+	const startX1 = menuFinalX1.toFloat()
+	const startY1 = menuFinalY1.toFloat()
+	const startX2 = menuFinalX2.toFloat()
+	const startY2 = menuFinalY2.toFloat()
+	const startX3 = menuFinalX3.toFloat()
+	const startY3 = menuFinalY3.toFloat()
 
 	const animator = ValueAnimator.ofFloat(1.0.toFloat(), 0.0.toFloat())
 	animator.setDuration(320)
