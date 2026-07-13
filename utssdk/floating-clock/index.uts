@@ -219,6 +219,12 @@ function expandMenu() : void {
 	const cx = clockParams!.x + cw / 2
 	const cy = clockParams!.y + ch / 2
 
+	// 刷新屏幕尺寸（适应横竖屏切换）
+	const dm = new DisplayMetrics()
+	windowManager!.getDefaultDisplay().getMetrics(dm)
+	screenWidth = dm.widthPixels
+	screenHeight = dm.heightPixels
+
 	expandRight = cx < screenWidth / 2
 
 	const btnHalf = dp2px(36.0) / 2
@@ -332,6 +338,12 @@ function collapseMenu() : void {
 	const ch = clockView!.getHeight()
 	const cx = clockParams!.x + cw / 2
 	const cy = clockParams!.y + ch / 2
+
+	// 刷新屏幕尺寸（适应横竖屏切换）
+	const dm2 = new DisplayMetrics()
+	windowManager!.getDefaultDisplay().getMetrics(dm2)
+	screenWidth = dm2.widthPixels
+	screenHeight = dm2.heightPixels
 
 	expandRight = cx < screenWidth / 2
 
@@ -547,6 +559,10 @@ export function startFloatingClock(mode : ClockMode) : boolean {
 				}
 			}
 			if (hasMoved) {
+				// 动态获取当前屏幕尺寸（适应横竖屏切换）
+				windowManager!.getDefaultDisplay().getMetrics(dm)
+				screenWidth = dm.widthPixels
+				screenHeight = dm.heightPixels
 				var newX = startWindowX + dx
 				var newY = startWindowY + dy
 				const maxX = screenWidth - v.getWidth()
