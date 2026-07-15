@@ -24,6 +24,7 @@
 - `ref()` 和 `reactive()` 可用，但类型必须兼容 UTS（不支持 `any`，泛型有限）。
 - 模板语法类似 Vue，但组件名必须匹配已注册的 uni-app x 组件或自定义 `.uvue` 文件。
 - CSS 不兼容：不支持 `100vh`（用 `flex: 1` 替代）、不支持 `text-transform`。
+- UTS 中数字字面量类型严格匹配，Double 变量必须用 0.0
 
 ## UTS 编译错误清单（实踩经验）
 
@@ -59,11 +60,7 @@
 | `DisplayMetrics` 获取屏幕尺寸 | `new DisplayMetrics()` + `windowManager.getDefaultDisplay().getMetrics(dm)`，然后 `dm.widthPixels` / `dm.heightPixels` |
 
 ### 模块系统
-| 错误/模式 | 说明 |
-|---|---|
-| 插件导入路径 | 页面导入 UTS 插件必须用**相对路径**（如 `../../utssdk/floating-clock/index`），`@/` 别名无法解析 |
-| `package.json` 禁用 | `utssdk/` 目录下**不能放 `package.json`**，否则编译卡死无报错 |
-| 嵌套类访问 | 导入 `ValueAnimator from 'android.animation.ValueAnimator'` 后，可通过 `ValueAnimator.AnimatorUpdateListener` 引用内部接口 |
+`utssdk` 是一个系统保留的特殊目录
 
 ## 文件结构
 

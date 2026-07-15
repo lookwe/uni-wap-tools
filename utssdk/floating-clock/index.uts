@@ -25,6 +25,12 @@ let startTouchY : Float = 0.0.toFloat()
 let startWindowX : Int = 0
 let startWindowY : Int = 0
 let hasMoved = false
+let dragMaxX : Int = 0
+let dragMaxY : Int = 0
+let dragThreshold : Int = 0
+let dragging = false
+let clockFixedWidth : Int = 0
+let clockFixedHeight : Int = 0
 
 let screenWidth : Int = 0
 let screenHeight : Int = 0
@@ -45,12 +51,12 @@ let expandDoneTimer : Number = -1
 let collapseDoneTimer : Number = -1
 let currentFontSizeSp : Double = 12.0
 
-let menuFinalX1 : Double = 0
-let menuFinalY1 : Double = 0
-let menuFinalX2 : Double = 0
-let menuFinalY2 : Double = 0
-let menuFinalX3 : Double = 0
-let menuFinalY3 : Double = 0
+let menuFinalX1 : Double = 0.0
+let menuFinalY1 : Double = 0.0
+let menuFinalX2 : Double = 0.0
+let menuFinalY2 : Double = 0.0
+let menuFinalX3 : Double = 0.0
+let menuFinalY3 : Double = 0.0
 
 let btnTouchX : Float = 0.0.toFloat()
 let btnTouchY : Float = 0.0.toFloat()
@@ -107,8 +113,24 @@ function calcMenuAngles(cxd : Double, cyd : Double, r : Double, bhd : Double) : 
 	}
 }
 
+function measureClockSize() : void {
+	if (clockView == null) return
+	const paint = clockView!.getPaint()
+	const textW = paint.measureText("00:00:00").toInt()
+	const fm = paint.getFontMetricsInt()
+	const textH = fm.bottom - fm.top
+	const hPad = dp2px(14.0)
+	const vPad = dp2px(8.0)
+	clockFixedWidth = textW + hPad * 2
+	clockFixedHeight = textH + vPad * 2
+	if (clockParams != null) {
+		clockParams!.width = clockFixedWidth
+		clockParams!.height = clockFixedHeight
+	}
+}
+
 function tick() : void {
-	if (!running) {
+	if (!running || dragging) {
 		return
 	}
 	if (clockView != null) {
@@ -227,13 +249,10 @@ function onMenuClick(v : View) : void {
 function applyFontSize() : void {
 	if (clockView != null) {
 		clockView!.setTextSize(TypedValue.COMPLEX_UNIT_SP, currentFontSizeSp.toFloat())
-		clockView!.requestLayout()
-		// 等待布局后更新窗口尺寸
-		setTimeout(function () : void {
-			if (windowManager != null && clockView != null && clockParams != null) {
-				windowManager!.updateViewLayout(clockView, clockParams)
-			}
-		}, 100)
+		measureClockSize()
+		if (windowManager != null && clockParams != null) {
+			windowManager!.updateViewLayout(clockView, clockParams)
+		}
 	}
 }
 
@@ -522,11 +541,12 @@ export function startFloatingClock(mode : ClockMode) : boolean {
 	const context = getAppContext()
 	windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
 	clockView = createClockView()
+	measureClockSize()
 
 	const flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 	const params = new WindowManager.LayoutParams(
-		WindowManager.LayoutParams.WRAP_CONTENT,
-		WindowManager.LayoutParams.WRAP_CONTENT,
+		clockFixedWidth,
+		clockFixedHeight,
 		WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
 		flags,
 		android.graphics.PixelFormat.TRANSLUCENT
@@ -548,31 +568,32 @@ export function startFloatingClock(mode : ClockMode) : boolean {
 			startWindowX = clockParams!.x
 			startWindowY = clockParams!.y
 			hasMoved = false
+			dragging = false
+			windowManager!.getDefaultDisplay().getMetrics(dm)
+			screenWidth = dm.widthPixels
+			screenHeight = dm.heightPixels
+			dragMaxX = screenWidth - clockFixedWidth
+			dragMaxY = screenHeight - clockFixedHeight
+			dragThreshold = dp2px(8.0)
 			return true
 		}
 		if (event.getAction() == MotionEvent.ACTION_MOVE) {
 			const dx = (event.getRawX() - startTouchX).toInt()
 			const dy = (event.getRawY() - startTouchY).toInt()
-			const threshold = dp2px(8.0)
-			if (dx < -threshold || dx > threshold || dy < -threshold || dy > threshold) {
+			if (!hasMoved && (dx < -dragThreshold || dx > dragThreshold || dy < -dragThreshold || dy > dragThreshold)) {
 				hasMoved = true
+				dragging = true
 				if (menuOpen && !menuAnimating) {
 					collapseMenu()
 				}
 			}
 			if (hasMoved) {
-				// 动态获取当前屏幕尺寸（适应横竖屏切换）
-				windowManager!.getDefaultDisplay().getMetrics(dm)
-				screenWidth = dm.widthPixels
-				screenHeight = dm.heightPixels
 				var newX = startWindowX + dx
 				var newY = startWindowY + dy
-				const maxX = screenWidth - v.getWidth()
-				const maxY = screenHeight - v.getHeight()
 				if (newX < 0) newX = 0
-				if (newX > maxX) newX = maxX
+				if (newX > dragMaxX) newX = dragMaxX
 				if (newY < 0) newY = 0
-				if (newY > maxY) newY = maxY
+				if (newY > dragMaxY) newY = dragMaxY
 				clockParams!.x = newX
 				clockParams!.y = newY
 				windowManager!.updateViewLayout(v, clockParams)
@@ -580,6 +601,7 @@ export function startFloatingClock(mode : ClockMode) : boolean {
 			return true
 		}
 		if (event.getAction() == MotionEvent.ACTION_UP) {
+			dragging = false
 			if (!hasMoved) {
 				toggleMenu()
 			}

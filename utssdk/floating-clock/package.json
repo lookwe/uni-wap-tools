@@ -1,0 +1,13 @@
+{
+    "name": "floating-clock",
+    "version": "1.0.0",
+    "description": "悬浮时钟插件",
+    "main": "index.uts",
+    "uni-app-x": {
+        "plugins": {
+        "floating-clock": {
+            "type": "api"
+        }
+        }
+    }
+}
